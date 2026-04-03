@@ -31,6 +31,10 @@ export interface GameState {
   carX: number;
   carActive: boolean;
   carCooldown: number;
+  pedestrianX: number;
+  pedestrianActive: boolean;
+  pedestrianTriggered: boolean;
+  pedestrianWalkFrame: number;
 }
 
 export interface DialogueLine {
@@ -91,4 +95,5 @@ export interface DrawContext {
   hangingImage?: HTMLImageElement;
   playerLookupImage?: HTMLImageElement;
   carImage?: HTMLImageElement;
+  pedestrianImage?: HTMLImageElement;
 }

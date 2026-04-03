@@ -45,6 +45,7 @@ export function drawGame(dc: DrawContext) {
   }
 
   drawHangingFigures(dc);
+  drawPedestrian(dc);
   drawAnomaliesBehind(dc);
   drawPlayer(dc);
   drawAnomaliesFront(dc);
@@ -162,6 +163,33 @@ function drawPhotoBg(dc: DrawContext) {
   }
 }
 
+// ======================== PEDESTRIAN ========================
+function drawPedestrian(dc: DrawContext) {
+  const { ctx, height, state, pedestrianImage } = dc;
+  if (!state.pedestrianActive || !pedestrianImage || !pedestrianImage.complete || !pedestrianImage.naturalWidth) return;
+
+  const gy = height * GROUND_Y_RATIO - 28;
+  const screenX = state.pedestrianX - state.cameraX;
+
+  ctx.save();
+
+  // Same bob as player
+  const bob = Math.sin(state.pedestrianWalkFrame * 0.08) * 1.2;
+
+  // Same scale as player
+  const targetH = 350;
+  const scale = targetH / pedestrianImage.naturalHeight;
+  const imgW = pedestrianImage.naturalWidth * scale;
+  const imgH = targetH;
+
+  const drawX = screenX - imgW / 2;
+  const drawY = gy - imgH * 0.42 + bob;
+
+  ctx.drawImage(pedestrianImage, drawX, drawY, imgW, imgH);
+
+  ctx.restore();
+}
+
 // ======================== CAR ========================
 function drawCar(dc: DrawContext) {
   const { ctx, height, state, carImage } = dc;
@@ -178,10 +206,11 @@ function drawCar(dc: DrawContext) {
   const carW = carImage.naturalWidth * scale;
 
   // Car position — lower on screen
-  const carY = gy - carH + 100;
+  const carY = gy - carH + 140;
 
   // Draw car (facing left — same direction as it moves)
-  ctx.drawImage(carImage, screenX - carW / 2, carY, carW, carH);
+  const cx = screenX - carW / 2;
+  ctx.drawImage(carImage, cx, carY, carW, carH);
 
   // Headlight glow (front of car = left side since moving left)
   ctx.globalAlpha = 0.15;
@@ -2149,37 +2178,36 @@ function drawHorrorAtmosphere(dc: DrawContext) {
 
   // === BLOOD OVERLAY IMAGES ===
 
-  // Blood frame — edges of screen, loop 4+, increasing opacity
-  if (loop >= 4 && bloodFrameImage && bloodFrameImage.complete) {
+  // Blood frame — edges of screen, from 2日目 (loop 1+)
+  if (loop >= 1 && bloodFrameImage && bloodFrameImage.complete) {
     ctx.save();
-    ctx.globalAlpha = 0.15 + (loop - 4) * 0.1;
+    ctx.globalAlpha = 0.05 + loop * 0.1;
     ctx.globalCompositeOperation = "multiply";
     ctx.drawImage(bloodFrameImage, 0, 0, width, height);
     ctx.restore();
   }
 
-  // Blood splat — brief flash on screen shake triggers
-  if (loop >= 3 && bloodSplatImage && bloodSplatImage.complete && state.screenShake.duration > 0) {
+  // Blood splat — brief flash on screen shake triggers, from 2日目
+  if (loop >= 1 && bloodSplatImage && bloodSplatImage.complete && state.screenShake.duration > 0) {
     ctx.save();
-    ctx.globalAlpha = Math.min(0.4, state.screenShake.duration * 0.015);
-    // Random position on screen
+    ctx.globalAlpha = Math.min(0.35, state.screenShake.duration * 0.012);
     const splatX = seededRandom(state.screenShake.duration * 3.7) * width * 0.6;
     const splatY = seededRandom(state.screenShake.duration * 5.1) * height * 0.6;
-    const splatSize = 60 + loop * 15;
+    const splatSize = 50 + loop * 20;
     ctx.drawImage(bloodSplatImage, splatX, splatY, splatSize, splatSize);
     ctx.restore();
   }
 
-  // Blood handprint — appears on screen in loop 5+, slowly fades in at certain positions
-  if (loop >= 5 && bloodHandImage && bloodHandImage.complete) {
+  // Blood handprint — appears on screen from 2日目
+  if (loop >= 1 && bloodHandImage && bloodHandImage.complete) {
     const handPhase = Math.sin(time * 0.0004 + loop);
     if (handPhase > 0.7) {
       ctx.save();
-      ctx.globalAlpha = (handPhase - 0.7) * 1.5 * 0.3;
-      const handSize = 80 + loop * 10;
+      ctx.globalAlpha = (handPhase - 0.7) * 1.5 * 0.25;
+      const handSize = 70 + loop * 15;
       ctx.drawImage(bloodHandImage, width * 0.15, height * 0.2, handSize, handSize);
-      if (loop >= 7) {
-        // Second hand
+      if (loop >= 3) {
+        // Second hand in final loop
         ctx.drawImage(bloodHandImage, width * 0.65, height * 0.4, handSize * 0.8, handSize * 0.8);
       }
       ctx.restore();
@@ -2198,8 +2226,8 @@ function drawHorrorAtmosphere(dc: DrawContext) {
     }
   }
 
-  // Peripheral shadow figures — brief glimpses at screen edges
-  if (loop >= 2) {
+  // Peripheral shadow figures — brief glimpses at screen edges (only loop 3+)
+  if (loop >= 3) {
     const chance = 0.002 * (loop - 1);
     if (seededRandom(Math.floor(time * 0.01) * 0.1) < chance) {
       ctx.save();
@@ -2219,8 +2247,8 @@ function drawHorrorAtmosphere(dc: DrawContext) {
     }
   }
 
-  // Window watchers — faces occasionally appear in lit windows
-  if (loop >= 3) {
+  // Window watchers — faces occasionally appear in lit windows (only loop 4+)
+  if (loop >= 4) {
     const px = state.cameraX * 0.95;
     for (let i = 0; i < 3; i++) {
       const ws = i * 37.3 + loop * 5;
@@ -2247,7 +2275,7 @@ function drawHorrorAtmosphere(dc: DrawContext) {
   // Breathing darkness at screen edges — gets worse each loop
   if (loop >= 1) {
     const breathe = Math.sin(time * 0.0015) * 0.5 + 0.5;
-    const intensity = 0.05 + loop * 0.04 + breathe * 0.03 * loop;
+    const intensity = (0.05 + loop * 0.04 + breathe * 0.03 * loop) * 0.5;
 
     // Left edge darkness
     const leftGrad = ctx.createLinearGradient(0, 0, width * 0.25, 0);
@@ -2281,20 +2309,7 @@ function drawHorrorAtmosphere(dc: DrawContext) {
     ctx.restore();
   }
 
-  // Noise/static overlay in later loops (subtle)
-  if (loop >= 5) {
-    ctx.save();
-    ctx.globalAlpha = 0.006 * (loop - 4);
-    for (let i = 0; i < 30; i++) {
-      const nx = Math.random() * width;
-      const ny = Math.random() * height;
-      ctx.fillStyle = Math.random() > 0.5 ? "#fff" : "#000";
-      ctx.fillRect(nx, ny, Math.random() * 3, 1);
-    }
-    ctx.restore();
-  }
-
-  // Occasional full-screen pulse of darkness
+  // Occasional full-screen pulse of darkness (only loop 3+)
   if (loop >= 3) {
     const pulse = Math.sin(time * 0.001 + loop);
     if (pulse > 0.97) {
@@ -2317,11 +2332,11 @@ function drawEffects(dc: DrawContext) {
     ctx.fillRect(-20, -20, width + 40, height + 40);
   }
 
-  // Vignette - very strong for close-up feel
-  const vs = 0.7 + state.loopCount * 0.04;
-  const vg = ctx.createRadialGradient(width / 2, height * 0.45, height * 0.18, width / 2, height * 0.45, height * 0.7);
+  // Vignette - subtle, builds with loops
+  const vs = 0.3 + state.loopCount * 0.06;
+  const vg = ctx.createRadialGradient(width / 2, height * 0.45, height * 0.25, width / 2, height * 0.45, height * 0.75);
   vg.addColorStop(0, "rgba(0,0,0,0)");
-  vg.addColorStop(0.6, `rgba(0,0,0,${vs * 0.3})`);
+  vg.addColorStop(0.7, `rgba(0,0,0,${vs * 0.2})`);
   vg.addColorStop(1, `rgba(0,0,0,${vs})`);
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, width, height);
@@ -2347,16 +2362,18 @@ function drawEffects(dc: DrawContext) {
     ctx.fillRect(0, 0, width, height);
   }
 
-  // Scanlines
-  ctx.save();
-  ctx.globalAlpha = 0.04;
-  ctx.fillStyle = "#000";
-  for (let y = 0; y < height; y += 2.5) {
-    ctx.fillRect(0, y, width, 0.8);
+  // Scanlines - only visible in later loops
+  if (state.loopCount >= 3) {
+    ctx.save();
+    ctx.globalAlpha = 0.02 + (state.loopCount - 3) * 0.01;
+    ctx.fillStyle = "#000";
+    for (let y = 0; y < height; y += 2.5) {
+      ctx.fillRect(0, y, width, 0.8);
+    }
+    ctx.restore();
   }
-  ctx.restore();
 
-  // Chromatic aberration
+  // Chromatic aberration - only in later loops
   if (state.loopCount >= 4) {
     ctx.save();
     ctx.globalCompositeOperation = "screen";
@@ -2388,7 +2405,7 @@ function drawEffects(dc: DrawContext) {
 function drawOverlays(dc: DrawContext) {
   const { ctx, width, height, state } = dc;
 
-  // Story dialogue (bottom of screen)
+  // Story dialogue — floating text, no box
   if (state.dialogue && state.dialogue.opacity > 0) {
     const d = state.dialogue;
     ctx.save();
@@ -2396,43 +2413,30 @@ function drawOverlays(dc: DrawContext) {
 
     const font = "'Yu Gothic','Hiragino Kaku Gothic Pro',serif";
     const lines = d.text.split("\n");
-    const lineHeight = 26;
-    const boxH = lines.length * lineHeight + 36;
-    const boxY = height - boxH - 20;
-
-    // Semi-transparent dialogue box
-    ctx.fillStyle = "rgba(0,0,0,0.65)";
-    ctx.fillRect(40, boxY, width - 80, boxH);
-
-    // Subtle border
-    ctx.strokeStyle = d.speaker === "voice"
-      ? "rgba(140,40,40,0.4)"
-      : d.speaker === "memory"
-        ? "rgba(80,80,120,0.3)"
-        : "rgba(80,80,80,0.25)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(40, boxY, width - 80, boxH);
+    const lineHeight = 24;
+    const textY = height - lines.length * lineHeight - 40;
 
     // Text color based on speaker
     if (d.speaker === "voice") {
-      // Dead friend's voice - red tint
       ctx.fillStyle = "#c06060";
-      ctx.font = `16px ${font}`;
+      ctx.font = `18px ${font}`;
     } else if (d.speaker === "memory") {
-      // Memory flashback - bluish
       ctx.fillStyle = "#8090b0";
-      ctx.font = `italic 15px ${font}`;
+      ctx.font = `italic 16px ${font}`;
     } else {
-      // Inner monologue - white
       ctx.fillStyle = "#c0bab0";
-      ctx.font = `15px ${font}`;
+      ctx.font = `16px ${font}`;
     }
 
-    ctx.textAlign = "left";
+    ctx.textAlign = "center";
     ctx.textBaseline = "top";
+    ctx.shadowColor = "rgba(0,0,0,0.8)";
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
 
     for (let i = 0; i < lines.length; i++) {
-      ctx.fillText(lines[i], 60, boxY + 18 + i * lineHeight);
+      ctx.fillText(lines[i], width / 2, textY + i * lineHeight);
     }
 
     ctx.restore();

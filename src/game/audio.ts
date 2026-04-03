@@ -7,6 +7,9 @@ export class HorrorAudio {
   private cricketGain: GainNode | null = null;
   private memoryBuffer: AudioBuffer | null = null;
   private carPassBuffer: AudioBuffer | null = null;
+  private footstepBuffer: AudioBuffer | null = null;
+  private memorySource: AudioBufferSourceNode | null = null;
+  private memoryGainNode: GainNode | null = null;
 
   init() {
     if (this.initialized) return;
@@ -15,6 +18,13 @@ export class HorrorAudio {
     this.masterGain.gain.value = 0.35;
     this.masterGain.connect(this.ctx.destination);
     this.initialized = true;
+
+    // Preload footstep sound
+    fetch("/footstep.mp3")
+      .then(r => r.arrayBuffer())
+      .then(buf => this.ctx!.decodeAudioData(buf))
+      .then(decoded => { this.footstepBuffer = decoded; })
+      .catch(() => {});
 
     // Preload fall sound
     fetch("/fall.mp3")
@@ -75,13 +85,33 @@ export class HorrorAudio {
 
   playMemory() {
     if (!this.ctx || !this.masterGain || !this.memoryBuffer) return;
-    const source = this.ctx.createBufferSource();
-    source.buffer = this.memoryBuffer;
-    const gain = this.ctx.createGain();
-    gain.gain.value = 0.3;
-    source.connect(gain);
-    gain.connect(this.masterGain);
-    source.start();
+    // Stop previous if still playing
+    if (this.memorySource) {
+      try { this.memorySource.stop(); } catch {}
+      this.memorySource = null;
+    }
+    this.memorySource = this.ctx.createBufferSource();
+    this.memorySource.buffer = this.memoryBuffer;
+    this.memoryGainNode = this.ctx.createGain();
+    this.memoryGainNode.gain.value = 0.3;
+    this.memorySource.connect(this.memoryGainNode);
+    this.memoryGainNode.connect(this.masterGain);
+    this.memorySource.start();
+    this.memorySource.onended = () => { this.memorySource = null; };
+  }
+
+  stopMemory() {
+    if (this.memorySource) {
+      try {
+        if (this.memoryGainNode && this.ctx) {
+          this.memoryGainNode.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
+        }
+        setTimeout(() => {
+          try { this.memorySource?.stop(); } catch {}
+          this.memorySource = null;
+        }, 500);
+      } catch {}
+    }
   }
 
   playFall() {
@@ -96,43 +126,14 @@ export class HorrorAudio {
   }
 
   playFootstep() {
-    if (!this.ctx || !this.masterGain) return;
-    // More realistic footstep - noise burst + low thud
-    const bufferSize = Math.floor(this.ctx.sampleRate * 0.08);
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      const env = Math.exp(-i / (bufferSize * 0.15));
-      data[i] = (Math.random() * 2 - 1) * 0.15 * env;
-    }
+    if (!this.ctx || !this.masterGain || !this.footstepBuffer) return;
     const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
-
-    // Filter to make it sound like concrete
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = 800 + Math.random() * 400;
-
+    source.buffer = this.footstepBuffer;
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
-
-    source.connect(filter);
-    filter.connect(gain);
+    gain.gain.value = 0.8;
+    source.connect(gain);
     gain.connect(this.masterGain);
     source.start();
-
-    // Low thud
-    const osc = this.ctx.createOscillator();
-    const oscGain = this.ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = 60 + Math.random() * 20;
-    oscGain.gain.setValueAtTime(0.06, this.ctx.currentTime);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.06);
-    osc.connect(oscGain);
-    oscGain.connect(this.masterGain);
-    osc.start();
-    osc.stop(this.ctx.currentTime + 0.06);
   }
 
   playAmbientDrone(loop: number) {

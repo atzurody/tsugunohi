@@ -27,6 +27,8 @@ export default function Game() {
   const hangingRef = useRef<HTMLImageElement | null>(null);
   const playerLookupRef = useRef<HTMLImageElement | null>(null);
   const carRef = useRef<HTMLImageElement | null>(null);
+  const pedestrianRef = useRef<HTMLImageElement | null>(null);
+  const pedFootstepTimerRef = useRef<number>(0);
 
   const handleStart = useCallback(() => {
     const state = stateRef.current;
@@ -77,6 +79,7 @@ export default function Game() {
       [hangingRef, "/hanging.png"],
       [playerLookupRef, "/player_lookup.png"],
       [carRef, "/car.png"],
+      [pedestrianRef, "/pedestrian.png"],
     ] as [React.RefObject<HTMLImageElement | null>, string][]) {
       if (!ref.current) {
         const img = new Image();
@@ -129,10 +132,12 @@ export default function Game() {
 
         const audio = audioRef.current;
 
-        // Footsteps
-        if (cur.isWalking) {
+        // Footsteps — play when bob starts going down, with cooldown to prevent overlap
+        if (cur.isWalking && cur.walkFrame > 1) {
+          const prev = Math.sin((cur.walkFrame - 1) * 0.08);
+          const curr = Math.sin(cur.walkFrame * 0.08);
           footstepTimerRef.current++;
-          if (footstepTimerRef.current > 22) {
+          if (prev > curr && prev > 0.9 && footstepTimerRef.current > 20) {
             audio.playFootstep();
             footstepTimerRef.current = 0;
           }
@@ -153,6 +158,19 @@ export default function Game() {
           }
         }
 
+        // Pedestrian footsteps
+        if (cur.pedestrianActive) {
+          const prevP = Math.sin((cur.pedestrianWalkFrame - 1) * 0.08);
+          const currP = Math.sin(cur.pedestrianWalkFrame * 0.08);
+          pedFootstepTimerRef.current++;
+          if (prevP > currP && prevP > 0.9 && pedFootstepTimerRef.current > 20) {
+            audio.playFootstep();
+            pedFootstepTimerRef.current = 0;
+          }
+        } else {
+          pedFootstepTimerRef.current = 0;
+        }
+
         // Car pass sound — play when car spawns
         if (cur.carActive && !state.carActive) {
           audio.playCarPass();
@@ -165,9 +183,12 @@ export default function Game() {
           }
         }
 
-        // Memory flashback sound — play when memory dialogue starts
+        // Memory flashback sound — play when memory/voice dialogue starts, stop when it ends
         if (cur.dialogue && cur.dialogueTimer === 1 && (cur.dialogue.speaker === "memory" || cur.dialogue.speaker === "voice")) {
           audio.playMemory();
+        }
+        if (!cur.dialogue && state.dialogue && (state.dialogue.speaker === "memory" || state.dialogue.speaker === "voice")) {
+          audio.stopMemory();
         }
 
         // Shadow fall sound — play when a shadow starts falling
@@ -241,12 +262,12 @@ export default function Game() {
           hangingImage: hangingRef.current ?? undefined,
           playerLookupImage: playerLookupRef.current ?? undefined,
           carImage: carRef.current ?? undefined,
+          pedestrianImage: pedestrianRef.current ?? undefined,
         });
 
         ctx.restore();
 
-        // Cinematic letterbox bars — visible only while dialogue is actively showing
-        // If next queued text hasn't triggered yet (gap), hide the bars
+        // Cinematic letterbox bars while dialogue is active or queued
         const hasDialogue = cur.dialogue && cur.dialogue.opacity > 0;
         const nextReady = cur.dialogueQueue.length > 0 && (
           cur.dialogueQueue[0].triggerX === undefined || cur.playerX <= cur.dialogueQueue[0].triggerX
@@ -256,14 +277,10 @@ export default function Game() {
           const barH = Math.floor(canvas.height * 0.15);
           let barAlpha = 0.85;
           if (hasDialogue && !nextReady && cur.dialogue && cur.dialogueQueue.length === 0) {
-            // Last dialogue — fade out with it
             const remaining = cur.dialogue.duration - cur.dialogueTimer;
-            if (remaining < 30) {
-              barAlpha = 0.85 * (remaining / 30);
-            }
+            if (remaining < 30) barAlpha = 0.85 * (remaining / 30);
           }
           if (hasDialogue && cur.dialogue && cur.dialogue.opacity < 1) {
-            // Fading in
             barAlpha = 0.85 * Math.min(1, cur.dialogue.opacity * 2);
           }
           ctx.save();
@@ -274,7 +291,7 @@ export default function Game() {
           ctx.restore();
         }
 
-        // Draw dialogue text
+        // Draw dialogue text — floating text
         if (cur.dialogue && cur.dialogue.opacity > 0) {
           const d = cur.dialogue;
 
@@ -283,56 +300,35 @@ export default function Game() {
 
           const horrorFont = "'Noto Serif JP','Yu Mincho','Hiragino Mincho Pro',serif";
           const lines = d.text.split("\n");
-          const lineH = 44;
-          const boxH = lines.length * lineH + 50;
-          const boxY = canvas.height - boxH - 30;
+          const lineH = 28;
+          const textY = canvas.height - lines.length * lineH - 50;
 
-          // Dark semi-transparent box
-          ctx.fillStyle = "rgba(0,0,0,0.7)";
-          ctx.fillRect(50, boxY, canvas.width - 100, boxH);
-
-          // Border — red for voice, bluish for memory
-          ctx.strokeStyle = d.speaker === "voice"
-            ? "rgba(120,20,20,0.5)"
-            : d.speaker === "memory"
-              ? "rgba(60,60,100,0.35)"
-              : "rgba(60,60,60,0.2)";
-          ctx.lineWidth = 1;
-          ctx.strokeRect(50, boxY, canvas.width - 100, boxH);
-
-          // Horror text with subtle shake for voice type
+          // Subtle shake for voice type
           const isVoice = d.speaker === "voice";
-          const shakeAmount = isVoice ? 1.5 * (1 + cur.loopCount * 0.2) : 0;
+          const shakeAmount = isVoice ? 1.0 * (1 + cur.loopCount * 0.15) : 0;
           const shakeX = isVoice ? (Math.random() - 0.5) * shakeAmount : 0;
           const shakeY = isVoice ? (Math.random() - 0.5) * shakeAmount : 0;
 
           if (isVoice) {
             ctx.fillStyle = "#c04040";
-            ctx.font = `26px ${horrorFont}`;
+            ctx.font = `20px ${horrorFont}`;
           } else if (d.speaker === "memory") {
             ctx.fillStyle = "#7888a8";
-            ctx.font = `24px ${horrorFont}`;
+            ctx.font = `18px ${horrorFont}`;
           } else {
             ctx.fillStyle = "#b0a8a0";
-            ctx.font = `24px ${horrorFont}`;
+            ctx.font = `18px ${horrorFont}`;
           }
 
-          ctx.textAlign = "left";
+          ctx.textAlign = "center";
           ctx.textBaseline = "top";
-
-          // Draw text shadow for voice (ghostly double)
-          if (isVoice) {
-            ctx.save();
-            ctx.globalAlpha = d.opacity * 0.3;
-            ctx.fillStyle = "#800000";
-            for (let i = 0; i < lines.length; i++) {
-              ctx.fillText(lines[i], 75 + shakeX + 1.5, boxY + 22 + i * lineH + shakeY + 1.5);
-            }
-            ctx.restore();
-          }
+          ctx.shadowColor = "rgba(0,0,0,0.8)";
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetX = 1;
+          ctx.shadowOffsetY = 1;
 
           for (let i = 0; i < lines.length; i++) {
-            ctx.fillText(lines[i], 75 + shakeX, boxY + 22 + i * lineH + shakeY);
+            ctx.fillText(lines[i], canvas.width / 2 + shakeX, textY + i * lineH + shakeY);
           }
 
           ctx.restore();

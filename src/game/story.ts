@@ -7,7 +7,7 @@ export function getStoryDialogue(loop: number): DialogueLine[] {
     case 0: // 1日目 — 日常の帰り道、ユカリの不在
       return [
         { text: "......また、この道。", speaker: "mono", opacity: 0, duration: 360 },
-        { text: "歩かなきゃ。", speaker: "mono", opacity: 0, duration: 270 },
+        { text: "はぁ...帰ろう。", speaker: "mono", opacity: 0, duration: 270 },
         { text: "いつもの帰り道。", speaker: "mono", opacity: 0, duration: 300, triggerX: 1700 },
         { text: "今日も一人で帰る。", speaker: "mono", opacity: 0, duration: 300, triggerX: 1400 },
         { text: "隣にはもう、誰もいない。", speaker: "mono", opacity: 0, duration: 300, triggerX: 1100 },

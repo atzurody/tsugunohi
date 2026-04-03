@@ -37,6 +37,10 @@ export function createInitialState(): GameState {
     carX: -500,
     carActive: false,
     carCooldown: 600,
+    pedestrianX: -500,
+    pedestrianActive: false,
+    pedestrianTriggered: false,
+    pedestrianWalkFrame: 0,
     transitionTimer: 0,
   };
 }
@@ -66,6 +70,10 @@ export function startGame(state: GameState): GameState {
     carX: -500,
     carActive: false,
     carCooldown: 600,
+    pedestrianX: -500,
+    pedestrianActive: false,
+    pedestrianTriggered: false,
+    pedestrianWalkFrame: 0,
     transitionTimer: 0,
   };
 }
@@ -176,6 +184,25 @@ export function updateGame(state: GameState, keys: Set<string>, time: number): G
     }
   } else {
     next.carActive = false;
+  }
+
+  // Update pedestrian — once per loop, walks left to right
+  if (!state.pedestrianTriggered && state.loopCount <= 1) {
+    // Spawn when player has walked a bit
+    if (state.playerX < 1500 && !state.pedestrianActive) {
+      next.pedestrianActive = true;
+      next.pedestrianTriggered = true;
+      next.pedestrianX = state.cameraX - 200;
+      next.pedestrianWalkFrame = 0;
+    }
+  }
+  if (state.pedestrianActive) {
+    next.pedestrianX = state.pedestrianX + PLAYER_SPEED * 0.9;
+    next.pedestrianWalkFrame = state.pedestrianWalkFrame + 1;
+    // Despawn when off screen right
+    if (next.pedestrianX > state.cameraX + 600) {
+      next.pedestrianActive = false;
+    }
   }
 
   // Update screen effects
@@ -296,28 +323,25 @@ function generateAnomalies(loop: number): Anomaly[] {
   // triggerX: player triggers when playerX <= triggerX (right to left, stage=2000)
   // 4 loops: 0=calm, 1=uneasy, 2=scary, 3=nightmare
 
+  // Loop 0: no anomalies — calm, normal walk
+  if (loop === 0) return anomalies;
+
   if (loop >= 1) {
-    // Loop 1: shadows, light shake
-    anomalies.push({ id: id++, loopMin: 1, triggerX: 1500, type: "shadow_figure", triggered: false, data: { offsetX: -250 } });
-    anomalies.push({ id: id++, loopMin: 1, triggerX: 1200, type: "screen_shake", triggered: false, data: { intensity: 2, duration: 15 } });
-    anomalies.push({ id: id++, loopMin: 1, triggerX: 600, type: "shadow_figure", triggered: false, data: { offsetX: -180 } });
-    anomalies.push({ id: id++, loopMin: 1, triggerX: 400, type: "darkness_pulse", triggered: false, data: {} });
-    anomalies.push({ id: id++, loopMin: 1, triggerX: 900, type: "following_shadow", triggered: false, data: {} });
+    // Loop 1 (2日目): subtle shadow + blood
+    anomalies.push({ id: id++, loopMin: 1, triggerX: 1200, type: "shadow_figure", triggered: false, data: { offsetX: -300, opacity: 0.15 } });
+    anomalies.push({ id: id++, loopMin: 1, triggerX: 800, type: "blood_wall", triggered: false, data: {} });
   }
   if (loop >= 2) {
-    // Loop 2: blood, glitch, approaching figure, jumpscare
-    anomalies.push({ id: id++, loopMin: 2, triggerX: 1800, type: "darkness_pulse", triggered: false, data: {} });
-    anomalies.push({ id: id++, loopMin: 2, triggerX: 1600, type: "screen_shake", triggered: false, data: { intensity: 8, duration: 50 } });
+    // Loop 2: blood wall, reduced screen shake
+    anomalies.push({ id: id++, loopMin: 2, triggerX: 1600, type: "screen_shake", triggered: false, data: { intensity: 4, duration: 25 } });
     anomalies.push({ id: id++, loopMin: 2, triggerX: 1400, type: "blood_wall", triggered: false, data: {} });
-    anomalies.push({ id: id++, loopMin: 2, triggerX: 1100, type: "glitch", triggered: false, data: {} });
-    anomalies.push({ id: id++, loopMin: 2, triggerX: 800, type: "approaching_figure", triggered: false, data: { elapsed: 0 } });
-    anomalies.push({ id: id++, loopMin: 2, triggerX: 500, type: "distortion", triggered: false, data: {} });
+    anomalies.push({ id: id++, loopMin: 2, triggerX: 800, type: "shadow_figure", triggered: false, data: { offsetX: -200 } });
   }
   if (loop >= 3) {
-    // Loop 3 (final): everything at once, jumpscare, max horror
+    // Loop 3 (final): escalation but with reduced shake intensities
     anomalies.push({ id: id++, loopMin: 3, triggerX: 1900, type: "distortion", triggered: false, data: {} });
     anomalies.push({ id: id++, loopMin: 3, triggerX: 1800, type: "glitch", triggered: false, data: {} });
-    anomalies.push({ id: id++, loopMin: 3, triggerX: 1600, type: "screen_shake", triggered: false, data: { intensity: 18, duration: 100 } });
+    anomalies.push({ id: id++, loopMin: 3, triggerX: 1600, type: "screen_shake", triggered: false, data: { intensity: 9, duration: 50 } });
     anomalies.push({ id: id++, loopMin: 3, triggerX: 1400, type: "approaching_figure", triggered: false, data: { elapsed: 0 } });
     anomalies.push({ id: id++, loopMin: 3, triggerX: 1100, type: "jumpscare", triggered: false, data: { elapsed: 0 } });
     anomalies.push({ id: id++, loopMin: 3, triggerX: 800, type: "darkness_pulse", triggered: false, data: {} });
@@ -331,9 +355,11 @@ function generateAnomalies(loop: number): Anomaly[] {
 function generateGhostEvents(loop: number): GhostEvent[] {
   const ghosts: GhostEvent[] = [];
 
-  if (loop >= 1) {
+  // Loop 0: no ghosts
+  if (loop === 1) {
+    // Only one ghost, standing, very far away, low opacity
     ghosts.push({
-      x: 1100, y: 0, opacity: 0.35, width: 18, height: 120,
+      x: 400, y: 0, opacity: 0.15, width: 14, height: 100,
       type: "standing", speed: 0, active: true,
     });
   }
@@ -460,7 +486,7 @@ function updateEffects(state: GameState, time: number): GameState {
   const next = { ...state };
 
   if (state.screenShake.duration > 0) {
-    const intensity = state.screenShake.duration * 0.35;
+    const intensity = state.screenShake.duration * 0.175;
     next.screenShake = {
       x: (Math.random() - 0.5) * intensity,
       y: (Math.random() - 0.5) * intensity,
